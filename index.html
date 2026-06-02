@@ -1167,11 +1167,12 @@
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = reportHtml;
       // Надёжное скрытие: за пределами видимого экрана, но доступно для html2canvas
-      tempDiv.style.position = 'absolute';
-      tempDiv.style.left = '-9999px';
+      tempDiv.style.position = 'fixed';
       tempDiv.style.top = '0';
+      tempDiv.style.left = '0';
       tempDiv.style.width = '210mm';
-      tempDiv.style.backgroundColor = 'white';
+      tempDiv.style.background = 'white';
+      tempDiv.style.zIndex = '9999';
       document.body.appendChild(tempDiv);
 
       try {
