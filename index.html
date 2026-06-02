@@ -459,8 +459,8 @@
   </div>
 
   <script>
-    const API_CALCULATE = 'https://functions.yandexcloud.net/d4emnghk3b743j5v1mhu';
-    const API_BATCH = 'https://functions.yandexcloud.net/d4ehs1f924damhjs8vjv';
+    const API_CALCULATE = 'https://functions.yandexcloud.net/d4ed9eu425jn6eu9jm7i';
+    const API_BATCH = 'https://functions.yandexcloud.net/d4efouknu2abiu21s115';
     // ---------- КЛИЕНТСКИЕ КОНСТАНТЫ (только для отображения) ----------
     const CLIENT_CONFIG = {
       transferTariff04: 0.329,
@@ -651,6 +651,7 @@
           throw new Error(errData.error || 'Server error');
         }
         const modelData = await response.json();
+        console.log('MODEL LOADED', modelData);
         // Добавляем params в модель для корректной работы графиков (тариф сети)
         modelData.params = params;
         currentModel = modelData;
@@ -928,7 +929,7 @@
           seasonalDiv.style.display = 'none';
         }
       }
-      
+
       setChk('useTaxCheckbox', p.taxes.useProfitTax); setVal('profitTaxRate', p.taxes.profitTaxRate);
       setChk('usePropertyTax', p.taxes.usePropertyTax); setVal('propertyTaxRate', p.taxes.propertyTaxRate);
       setChk('cadastralCheck', p.taxes.useCadastral); setVal('cadastralVal', p.taxes.cadastralBuildingsValue); setVal('cadastralRate', p.taxes.cadastralRate);
@@ -1293,7 +1294,7 @@
 1. НАЗНАЧЕНИЕ И ОБЛАСТЬ ПРИМЕНЕНИЯ
 Модель предназначена для оценки инвестиционной привлекательности газопоршневой электростанции (ГПЭС) с возможностью когенерации тепла. Поддерживаются:
 - поэтапный ввод мощности (staged commissioning);
-- одноставочный или мультирежимный (пик/полупик/ночь) тариф на электроэнергию;
+- одноставочный или **сезонный мультирежимный** тариф на электроэнергию (зима/весна/лето/осень, день/ночь, рабочие/выходные/праздничные дни);
 - кредитное финансирование с выборкой долга пропорционально CAPEX;
 - развёрнутая система налогообложения (прибыль, имущество, НДС, каникулы);
 - дополнительные операционные затраты (масло, утилизация, расходники);
@@ -1336,19 +1337,23 @@
     GrossGen = P_inst * 1000 * H_eff * LoadFactor,
     OwnUse = GrossGen * (OwnNeeds% / 100),
     NetGen = GrossGen – OwnUse.
-Параметр LoadFactor (коэффициент загрузки) задаётся одним числом.
 
-Мультирежим (пик/полупик/ночь):
-Пользователь вводит для трёх зон:
-    s_i – доля времени (не обязательно в сумме 1, нормализуются),
-    LF_i – коэффициент загрузки в зоне,
-    T_i – тариф на электроэнергию (руб/кВт·ч).
-Нормализованные доли: s'_i = s_i / Σ s_j.
-Выработка по зонам:
-    Gross_i = P_inst * 1000 * H_eff * s'_i * LF_i,
-    OwnUse_i = Gross_i * (OwnNeeds% / 100),
-    Net_i = Gross_i – OwnUse_i.
-Общий полезный отпуск: NetGen = Σ Net_i.
+Сезонный мультирежим:
+Пользователь задаёт для четырёх сезонов (зима, весна, лето, осень):
+    days – количество дней в сезоне,
+    dayHours, nightHours – число дневных и ночных часов в сутки,
+    weekdayPct, weekendPct, holidayPct – процентное распределение дней на рабочие, выходные и праздничные.
+Для каждого типа дня (рабочий, выходной, праздничный) внутри сезона задаются:
+    тарифы (руб/кВт·ч) – отдельно для дня и ночи,
+    коэффициенты загрузки (LoadFactor) – отдельно для дня и ночи.
+
+Проценты дней нормализуются, чтобы в сумме давать 100%. Для каждой комбинации (сезон, тип дня, день/ночь) вычисляются:
+    часы = количество_дней × длительность_интервала,
+    Gross = P_inst × 1000 × часы × LoadFactor,
+    OwnUse = Gross × (OwnNeeds% / 100),
+    Net = Gross – OwnUse,
+    Revenue = Net × (Tariff + TransferTariff) × Инфляция.
+Общие валовая выработка, собственные нужды и полезный отпуск получаются суммированием по всем комбинациям.
 
 3.5 Расход газа
 Базовый удельный расход q0 (м³/кВт·ч) задаётся пользователем (по умолчанию 0,272).
@@ -1360,7 +1365,7 @@
 Коррекция при недогрузке (efficiency correction):
 Если опция включена, определяется средняя загрузка:
 - в однозонном режиме: avgLoad = LoadFactor;
-- в мультирежиме: avgLoad = Σ (s'_i * LF_i).
+- в мультирежиме: avgLoad = Σ (часы_i × LoadFactor_i) / Σ (часы_i).
 Поправочный коэффициент add:
     add = 0, если avgLoad ≥ 1;
     add = Corr% / 100, если avgLoad < 0.5;
@@ -1478,9 +1483,7 @@
     10 кВ – 0.265 руб/кВт·ч.
 Однозонный режим:
     RevenueGrid = NetGen * (GridPrice + TransferTariff) * Inf_factor(infl_grid, t).
-Мультирежим: для каждой зоны i
-    RevenueGrid_i = Net_i * (T_i + TransferTariff) * Inf_factor(infl_grid, t),
-    RevenueGrid = Σ RevenueGrid_i.
+Сезонный мультирежим: для каждой комбинации (сезон, тип дня, день/ночь) выручка суммируется, как описано в п.3.4.
 
 6.2 Тепло (когенерация)
 Тепловая мощность агрегата – 600 кВт. Коэффициент использования тепла – 0.65. Годовая выработка тепла:
