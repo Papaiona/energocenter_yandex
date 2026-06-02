@@ -1090,7 +1090,11 @@
       const debt = currentModel.debtSchedule;
       const cfads = currentModel.cfads;
 
-      // HTML-отчёт (тот же, что и раньше)
+      // Вспомогательные safe-функции
+      const safeFixed = (val, digits) => (val != null && !isNaN(val)) ? val.toFixed(digits) : '—';
+      const safePercent = (val, digits = 1) => (val != null && !isNaN(val)) ? (val * 100).toFixed(digits) + '%' : '—';
+
+      // HTML-отчёт
       const reportHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Investment Memo</title>
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; background: #fff; color: #000; }
@@ -1121,23 +1125,23 @@
   </table>
   <p><strong>Поэтапный пуск:</strong> ${params.stagedCommissioning.active ? 'Да' : 'Нет'} ${params.stagedCommissioning.active && params.stagedCommissioning.stages.length ? 'Этапы: ' + params.stagedCommissioning.stages.map(s => s.powerMW + ' МВт в год ' + s.year).join(', ') : ''}</p>
   <p><strong>Кредит:</strong> ${params.debt.active ? `Доля ${params.debt.share}%, ставка ${params.debt.interestRate}%, срок ${params.debt.term} лет, льготный ${params.debt.graceYears} лет, тип ${params.debt.paymentType}` : 'не используется'}</p>
-  <p><strong>WACC:</strong> Ke = ${(m.ke * 100).toFixed(1)}%, WACC = ${(m.wacc * 100).toFixed(1)}%</p>
+  <p><strong>WACC:</strong> Ke = ${safePercent(m.ke)}, WACC = ${safePercent(m.wacc)}</p>
   <h2>2. Ключевые метрики</h2>
   <div class="metric-grid">
     <div class="metric-card"><strong>NPV проекта</strong><br>${fmt(m.project_npv)}</div>
-    <div class="metric-card"><strong>IRR проекта</strong><br>${m.project_irr ? fmtPercent(m.project_irr) : '—'}</div>
+    <div class="metric-card"><strong>IRR проекта</strong><br>${safePercent(m.project_irr)}</div>
     <div class="metric-card"><strong>NPV Equity</strong><br>${fmt(m.equity_npv)}</div>
-    <div class="metric-card"><strong>IRR Equity</strong><br>${m.equity_irr ? fmtPercent(m.equity_irr) : '—'}</div>
-    <div class="metric-card"><strong>Min DSCR</strong><br>${m.min_dscr === Infinity ? '—' : m.min_dscr.toFixed(2)}</div>
-    <div class="metric-card"><strong>LLCR</strong><br>${m.llcr ? m.llcr.toFixed(2) : '—'}</div>
-    <div class="metric-card"><strong>ROE</strong><br>${m.roe.toFixed(1)}%</div>
+    <div class="metric-card"><strong>IRR Equity</strong><br>${safePercent(m.equity_irr)}</div>
+    <div class="metric-card"><strong>Min DSCR</strong><br>${m.min_dscr === Infinity ? '—' : safeFixed(m.min_dscr, 2)}</div>
+    <div class="metric-card"><strong>LLCR</strong><br>${safeFixed(m.llcr, 2)}</div>
+    <div class="metric-card"><strong>ROE</strong><br>${safeFixed(m.roe, 1)}%</div>
     <div class="metric-card"><strong>Общие инвестиции</strong><br>${fmt(m.total_investment)}</div>
   </div>
   <h2>3. Денежные потоки</h2>
   <table><thead><tr><th>Год</th><th>Выручка</th><th>OPEX</th><th>EBITDA</th><th>CFADS</th><th>FCFF</th><th>FCFE</th></tr></thead>
   <tbody>${yearly.map((y, i) => `<tr><td>${y.year}</td><td>${fmt(y.totalRevenue_excl_vat)}</td><td>${fmt(y.opex_excl_vat)}</td><td>${fmt(y.ebitda)}</td><td>${fmt(cfads[i])}</td><td>${fmt(currentModel.fcff[i])}</td><td>${fmt(currentModel.equity_cf[i])}</td></tr>`).join('')}</tbody></table>
   <h2>4. График долга</h2>
-  ${debt.length ? `<table><thead><tr><th>Год</th><th>Остаток</th><th>Проценты</th><th>Тело</th><th>Платёж</th><th>DSCR</th></tr></thead><tbody>${debt.map((d, idx) => `<tr><td>${d.year}</td><td>${fmt(d.debt)}</td><td>${fmt(d.interest)}</td><td>${fmt(d.principal)}</td><td>${fmt(d.payment)}</td><td>${currentModel.metrics.dscr_values[idx] ? currentModel.metrics.dscr_values[idx].toFixed(2) : '—'}</td></tr>`).join('')}</tbody></table>` : '<p>Кредит не используется</p>'}
+  ${debt.length ? `<table><thead><tr><th>Год</th><th>Остаток</th><th>Проценты</th><th>Тело</th><th>Платёж</th><th>DSCR</th></tr></thead><tbody>${debt.map((d, idx) => `<tr><td>${d.year}</td><td>${fmt(d.debt)}</td><td>${fmt(d.interest)}</td><td>${fmt(d.principal)}</td><td>${fmt(d.payment)}</td><td>${currentModel.metrics.dscr_values[idx] != null ? currentModel.metrics.dscr_values[idx].toFixed(2) : '—'}</td></tr>`).join('')}</tbody></table>` : '<p>Кредит не используется</p>'}
   <h2>5. Среднегодовые OPEX</h2>
   <table><tr><th>Статья</th><th>Сумма</th></tr>
     <tr><td>Топливо</td><td>${fmt(yearly.reduce((s, y) => s + y.fuelCost, 0) / yearly.length)}</td></tr>
@@ -1152,9 +1156,9 @@
   <h2>6. Выводы</h2>
   <ul>
     <li><strong>NPV проекта</strong> ${m.project_npv > 0 ? 'положительный' : 'отрицательный'} (${fmt(m.project_npv)}).</li>
-    <li><strong>IRR проекта</strong> ${m.project_irr ? fmtPercent(m.project_irr) : '—'}. ${m.project_irr && m.project_irr > m.wacc ? 'Превышает WACC.' : 'Ниже WACC.'}</li>
-    <li><strong>DSCR min</strong> ${m.min_dscr === Infinity ? '—' : m.min_dscr.toFixed(2)}.</li>
-    <li><strong>ROE</strong> ${m.roe.toFixed(1)}%.</li>
+    <li><strong>IRR проекта</strong> ${safePercent(m.project_irr)}. ${m.project_irr && m.project_irr > m.wacc ? 'Превышает WACC.' : 'Ниже WACC.'}</li>
+    <li><strong>DSCR min</strong> ${m.min_dscr === Infinity ? '—' : safeFixed(m.min_dscr, 2)}.</li>
+    <li><strong>ROE</strong> ${safeFixed(m.roe, 1)}%.</li>
   </ul>
   <footer>Сгенерировано моделью Энергоцентр</footer>
   </body></html>`;
@@ -1162,13 +1166,12 @@
       // Создаём временный элемент
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = reportHtml;
-      // ВАЖНО: элемент должен быть видимым для html2canvas, но мы его скроем после генерации
       tempDiv.style.position = 'fixed';
       tempDiv.style.top = '0';
       tempDiv.style.left = '0';
-      tempDiv.style.width = '210mm'; // A4
+      tempDiv.style.width = '210mm';
       tempDiv.style.background = 'white';
-      tempDiv.style.zIndex = '-1'; // скроем под другими элементами
+      tempDiv.style.zIndex = '-1';
       document.body.appendChild(tempDiv);
 
       try {
@@ -1183,7 +1186,6 @@
           .from(tempDiv)
           .outputPdf('blob');
 
-        // Создаём ссылку для скачивания
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
