@@ -1079,7 +1079,7 @@
       });
     });
     // Отчёт (генерируется на клиенте из currentModel)
-    document.getElementById('generateReportBtn').addEventListener('click', async () => {
+    document.getElementById('generateReportBtn').addEventListener('click', () => {
       if (!currentModel) {
         showError('Сначала выполните расчёт (нажмите "Пересчитать")');
         return;
@@ -1090,119 +1090,95 @@
       const debt = currentModel.debtSchedule;
       const cfads = currentModel.cfads;
 
-      // Вспомогательные safe-функции
-      const safeFixed = (val, digits) => (val != null && !isNaN(val)) ? val.toFixed(digits) : '—';
-      const safePercent = (val, digits = 1) => (val != null && !isNaN(val)) ? (val * 100).toFixed(digits) + '%' : '—';
-
-      // HTML-отчёт
-      const reportHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Investment Memo</title>
-  <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; background: #fff; color: #000; }
-    h1 { color: #00bfa6; }
-    h2 { border-bottom: 1px solid #ccc; margin-top: 25px; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-    th { background: #f2f2f2; }
-    .metric-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
-    .metric-card { background: #f9fafb; padding: 10px; border-radius: 8px; }
-    footer { font-size: 0.8em; color: #666; margin-top: 40px; text-align: center; }
-  </style></head><body>
-  <h1>Энергоцентр · Project Finance – Investment Memo</h1>
-  <p><strong>Дата:</strong> ${new Date().toLocaleString()}</p>
-  <h2>1. Исходные параметры</h2>
-  <table><tr><th>Параметр</th><th>Значение</th></tr>
-    <tr><td>Горизонт (лет)</td><td>${params.projectYears}</td></tr>
-    <tr><td>Мощность (МВт)</td><td>${params.powerMW}</td></tr>
-    <tr><td>Напряжение</td><td>${params.voltageKV} кВ</td></tr>
-    <tr><td>Цена газа (руб/м³)</td><td>${params.fuelCostRubM3}</td></tr>
-    <tr><td>Тариф сети (руб/кВт·ч)</td><td>${params.gridPriceRubKWh}</td></tr>
-    <tr><td>Часы работы</td><td>${params.operatingHours}</td></tr>
-    <tr><td>Коэффициент загрузки</td><td>${params.loadFactor}</td></tr>
-    <tr><td>Уд. расход газа (м³/кВт·ч)</td><td>${params.gasConsumption}</td></tr>
-    <tr><td>Поддерживающий CAPEX (%)</td><td>${params.maintCapexPercent}%</td></tr>
-    <tr><td>Ликвидационная стоимость (%)</td><td>${params.salvagePercent}%</td></tr>
-    <tr><td>CAPEX (млн/МВт)</td><td>${params.capexEquipment} / ${params.capexDesign} / ${params.capexNetwork} / ${params.capexCommissioning} / ${params.capexInfrastructure}</td></tr>
-  </table>
-  <p><strong>Поэтапный пуск:</strong> ${params.stagedCommissioning.active ? 'Да' : 'Нет'} ${params.stagedCommissioning.active && params.stagedCommissioning.stages.length ? 'Этапы: ' + params.stagedCommissioning.stages.map(s => s.powerMW + ' МВт в год ' + s.year).join(', ') : ''}</p>
-  <p><strong>Кредит:</strong> ${params.debt.active ? `Доля ${params.debt.share}%, ставка ${params.debt.interestRate}%, срок ${params.debt.term} лет, льготный ${params.debt.graceYears} лет, тип ${params.debt.paymentType}` : 'не используется'}</p>
-  <p><strong>WACC:</strong> Ke = ${safePercent(m.ke)}, WACC = ${safePercent(m.wacc)}</p>
-  <h2>2. Ключевые метрики</h2>
-  <div class="metric-grid">
-    <div class="metric-card"><strong>NPV проекта</strong><br>${fmt(m.project_npv)}</div>
-    <div class="metric-card"><strong>IRR проекта</strong><br>${safePercent(m.project_irr)}</div>
-    <div class="metric-card"><strong>NPV Equity</strong><br>${fmt(m.equity_npv)}</div>
-    <div class="metric-card"><strong>IRR Equity</strong><br>${safePercent(m.equity_irr)}</div>
-    <div class="metric-card"><strong>Min DSCR</strong><br>${m.min_dscr === Infinity ? '—' : safeFixed(m.min_dscr, 2)}</div>
-    <div class="metric-card"><strong>LLCR</strong><br>${safeFixed(m.llcr, 2)}</div>
-    <div class="metric-card"><strong>ROE</strong><br>${safeFixed(m.roe, 1)}%</div>
-    <div class="metric-card"><strong>Общие инвестиции</strong><br>${fmt(m.total_investment)}</div>
-  </div>
-  <h2>3. Денежные потоки</h2>
-  <table><thead><tr><th>Год</th><th>Выручка</th><th>OPEX</th><th>EBITDA</th><th>CFADS</th><th>FCFF</th><th>FCFE</th></tr></thead>
-  <tbody>${yearly.map((y, i) => `<tr><td>${y.year}</td><td>${fmt(y.totalRevenue_excl_vat)}</td><td>${fmt(y.opex_excl_vat)}</td><td>${fmt(y.ebitda)}</td><td>${fmt(cfads[i])}</td><td>${fmt(currentModel.fcff[i])}</td><td>${fmt(currentModel.equity_cf[i])}</td></tr>`).join('')}</tbody></table>
-  <h2>4. График долга</h2>
-  ${debt.length ? `<table><thead><tr><th>Год</th><th>Остаток</th><th>Проценты</th><th>Тело</th><th>Платёж</th><th>DSCR</th></tr></thead><tbody>${debt.map((d, idx) => `<tr><td>${d.year}</td><td>${fmt(d.debt)}</td><td>${fmt(d.interest)}</td><td>${fmt(d.principal)}</td><td>${fmt(d.payment)}</td><td>${currentModel.metrics.dscr_values[idx] != null ? currentModel.metrics.dscr_values[idx].toFixed(2) : '—'}</td></tr>`).join('')}</tbody></table>` : '<p>Кредит не используется</p>'}
-  <h2>5. Среднегодовые OPEX</h2>
-  <table><tr><th>Статья</th><th>Сумма</th></tr>
-    <tr><td>Топливо</td><td>${fmt(yearly.reduce((s, y) => s + y.fuelCost, 0) / yearly.length)}</td></tr>
-    <tr><td>ТО</td><td>${fmt(yearly.reduce((s, y) => s + y.maintCost, 0) / yearly.length)}</td></tr>
-    <tr><td>ФОТ</td><td>${fmt(yearly.reduce((s, y) => s + y.fotCost, 0) / yearly.length)}</td></tr>
-    <tr><td>Экология</td><td>${fmt(yearly.reduce((s, y) => s + y.ecoCost, 0) / yearly.length)}</td></tr>
-    <tr><td>Прочие</td><td>${fmt(yearly.reduce((s, y) => s + y.otherOpex, 0) / yearly.length)}</td></tr>
-    <tr><td>Масло</td><td>${fmt(yearly.reduce((s, y) => s + y.totalOilCost, 0) / yearly.length)}</td></tr>
-    <tr><td>Утилизация</td><td>${fmt(yearly.reduce((s, y) => s + y.wasteCost, 0) / yearly.length)}</td></tr>
-    <tr><td>Расходники</td><td>${fmt(yearly.reduce((s, y) => s + y.consumablesCost, 0) / yearly.length)}</td></tr>
-  </table>
-  <h2>6. Выводы</h2>
-  <ul>
-    <li><strong>NPV проекта</strong> ${m.project_npv > 0 ? 'положительный' : 'отрицательный'} (${fmt(m.project_npv)}).</li>
-    <li><strong>IRR проекта</strong> ${safePercent(m.project_irr)}. ${m.project_irr && m.project_irr > m.wacc ? 'Превышает WACC.' : 'Ниже WACC.'}</li>
-    <li><strong>DSCR min</strong> ${m.min_dscr === Infinity ? '—' : safeFixed(m.min_dscr, 2)}.</li>
-    <li><strong>ROE</strong> ${safeFixed(m.roe, 1)}%.</li>
-  </ul>
-  <footer>Сгенерировано моделью Энергоцентр</footer>
-  </body></html>`;
-
-      // Создаём временный элемент
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = reportHtml;
-      // Надёжное скрытие: за пределами видимого экрана, но доступно для html2canvas
-      tempDiv.style.position = 'fixed';
-      tempDiv.style.top = '0';
-      tempDiv.style.left = '0';
-      tempDiv.style.width = '210mm';
-      tempDiv.style.background = 'white';
-      tempDiv.style.zIndex = '9999';
-      document.body.appendChild(tempDiv);
-
-      try {
-        const pdfBlob = await html2pdf()
-          .set({
-            margin: [0.5, 0.5, 0.5, 0.5],
-            filename: 'Investment_Memo_Энергоцентр.pdf',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, logging: true },
-            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-          })
-          .from(tempDiv)
-          .outputPdf('blob');
-
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'Investment_Memo_Энергоцентр.pdf';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-      } catch (error) {
-        console.error('Ошибка при создании PDF:', error);
-        showError('Не удалось создать PDF. Проверьте консоль.');
-      } finally {
-        document.body.removeChild(tempDiv);
+      const reportHtml = `<!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Investment Memo – Энергоцентр</title>
+    <style>
+      body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; background: #fff; color: #000; }
+      h1 { color: #00bfa6; }
+      h2 { border-bottom: 1px solid #ccc; margin-top: 25px; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+      th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+      th { background: #f2f2f2; }
+      .metric-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
+      .metric-card { background: #f9fafb; padding: 10px; border-radius: 8px; }
+      footer { font-size: 0.8em; color: #666; margin-top: 40px; text-align: center; }
+      @media print {
+        body { margin: 0; }
+        button { display: none; }
       }
+    </style>
+  </head>
+  <body>
+    <h1>Энергоцентр · Project Finance – Investment Memo</h1>
+    <p><strong>Дата:</strong> ${new Date().toLocaleString()}</p>
+    <h2>1. Исходные параметры</h2>
+    <table>
+      <tr><th>Параметр</th><th>Значение</th></tr>
+      <tr><td>Горизонт (лет)</td><td>${params.projectYears}</td></tr>
+      <tr><td>Мощность (МВт)</td><td>${params.powerMW}</td></tr>
+      <tr><td>Напряжение</td><td>${params.voltageKV} кВ</td></tr>
+      <tr><td>Цена газа (руб/м³)</td><td>${params.fuelCostRubM3}</td></tr>
+      <tr><td>Тариф сети (руб/кВт·ч)</td><td>${params.gridPriceRubKWh}</td></tr>
+      <tr><td>Часы работы</td><td>${params.operatingHours}</td></tr>
+      <tr><td>Коэффициент загрузки</td><td>${params.loadFactor}</td></tr>
+      <tr><td>Уд. расход газа (м³/кВт·ч)</td><td>${params.gasConsumption}</td></tr>
+      <tr><td>Поддерживающий CAPEX (%)</td><td>${params.maintCapexPercent}%</td></tr>
+      <tr><td>Ликвидационная стоимость (%)</td><td>${params.salvagePercent}%</td></tr>
+      <tr><td>CAPEX (млн/МВт)</td><td>${params.capexEquipment} / ${params.capexDesign} / ${params.capexNetwork} / ${params.capexCommissioning} / ${params.capexInfrastructure}</td></tr>
+    </table>
+    <p><strong>Поэтапный пуск:</strong> ${params.stagedCommissioning.active ? 'Да' : 'Нет'} ${params.stagedCommissioning.active && params.stagedCommissioning.stages.length ? 'Этапы: ' + params.stagedCommissioning.stages.map(s => s.powerMW + ' МВт в год ' + s.year).join(', ') : ''}</p>
+    <p><strong>Кредит:</strong> ${params.debt.active ? `Доля ${params.debt.share}%, ставка ${params.debt.interestRate}%, срок ${params.debt.term} лет, льготный ${params.debt.graceYears} лет, тип ${params.debt.paymentType}` : 'не используется'}</p>
+    <p><strong>WACC:</strong> Ke = ${(m.ke * 100).toFixed(1)}%, WACC = ${(m.wacc * 100).toFixed(1)}%</p>
+    <h2>2. Ключевые метрики</h2>
+    <div class="metric-grid">
+      <div class="metric-card"><strong>NPV проекта</strong><br>${fmt(m.project_npv)}</div>
+      <div class="metric-card"><strong>IRR проекта</strong><br>${m.project_irr ? fmtPercent(m.project_irr) : '—'}</div>
+      <div class="metric-card"><strong>NPV Equity</strong><br>${fmt(m.equity_npv)}</div>
+      <div class="metric-card"><strong>IRR Equity</strong><br>${m.equity_irr ? fmtPercent(m.equity_irr) : '—'}</div>
+      <div class="metric-card"><strong>Min DSCR</strong><br>${m.min_dscr === Infinity ? '—' : m.min_dscr.toFixed(2)}</div>
+      <div class="metric-card"><strong>LLCR</strong><br>${m.llcr ? m.llcr.toFixed(2) : '—'}</div>
+      <div class="metric-card"><strong>ROE</strong><br>${m.roe.toFixed(1)}%</div>
+      <div class="metric-card"><strong>Общие инвестиции</strong><br>${fmt(m.total_investment)}</div>
+    </div>
+    <h2>3. Денежные потоки</h2>
+    <table>
+      <thead><tr><th>Год</th><th>Выручка</th><th>OPEX</th><th>EBITDA</th><th>CFADS</th><th>FCFF</th><th>FCFE</th></tr></thead>
+      <tbody>${yearly.map((y, i) => `<tr><td>${y.year}</td><td>${fmt(y.totalRevenue_excl_vat)}</td><td>${fmt(y.opex_excl_vat)}</td><td>${fmt(y.ebitda)}</td><td>${fmt(cfads[i])}</td><td>${fmt(currentModel.fcff[i])}</td><td>${fmt(currentModel.equity_cf[i])}</td></tr>`).join('')}</tbody>
+    </table>
+    <h2>4. График долга</h2>
+    ${debt.length ? `<table>
+      <thead><tr><th>Год</th><th>Остаток</th><th>Проценты</th><th>Тело</th><th>Платёж</th><th>DSCR</th></tr></thead>
+      <tbody>${debt.map((d, idx) => `<tr><td>${d.year}</td><td>${fmt(d.debt)}</td><td>${fmt(d.interest)}</td><td>${fmt(d.principal)}</td><td>${fmt(d.payment)}</td><td>${currentModel.metrics.dscr_values[idx] ? currentModel.metrics.dscr_values[idx].toFixed(2) : '—'}</td></tr>`).join('')}</tbody>
+    </table>` : '<p>Кредит не используется</p>'}
+    <h2>5. Среднегодовые OPEX</h2>
+    <table>
+      <tr><th>Статья</th><th>Сумма</th></tr>
+      <tr><td>Топливо</td><td>${fmt(yearly.reduce((s, y) => s + y.fuelCost, 0) / yearly.length)}</td></tr>
+      <tr><td>ТО</td><td>${fmt(yearly.reduce((s, y) => s + y.maintCost, 0) / yearly.length)}</td></tr>
+      <tr><td>ФОТ</td><td>${fmt(yearly.reduce((s, y) => s + y.fotCost, 0) / yearly.length)}</td></tr>
+      <tr><td>Экология</td><td>${fmt(yearly.reduce((s, y) => s + y.ecoCost, 0) / yearly.length)}</td></tr>
+      <tr><td>Прочие</td><td>${fmt(yearly.reduce((s, y) => s + y.otherOpex, 0) / yearly.length)}</td></tr>
+      <tr><td>Масло</td><td>${fmt(yearly.reduce((s, y) => s + y.totalOilCost, 0) / yearly.length)}</td></tr>
+      <tr><td>Утилизация</td><td>${fmt(yearly.reduce((s, y) => s + y.wasteCost, 0) / yearly.length)}</td></tr>
+      <tr><td>Расходники</td><td>${fmt(yearly.reduce((s, y) => s + y.consumablesCost, 0) / yearly.length)}</td></tr>
+    </table>
+    <h2>6. Выводы</h2>
+    <ul>
+      <li><strong>NPV проекта</strong> ${m.project_npv > 0 ? 'положительный' : 'отрицательный'} (${fmt(m.project_npv)}).</li>
+      <li><strong>IRR проекта</strong> ${m.project_irr ? fmtPercent(m.project_irr) : '—'}. ${m.project_irr && m.project_irr > m.wacc ? 'Превышает WACC.' : 'Ниже WACC.'}</li>
+      <li><strong>DSCR min</strong> ${m.min_dscr === Infinity ? '—' : m.min_dscr.toFixed(2)}.</li>
+      <li><strong>ROE</strong> ${m.roe.toFixed(1)}%.</li>
+    </ul>
+    <footer>Сгенерировано моделью Энергоцентр</footer>
+  </body>
+  </html>`;
+
+      const reportWindow = window.open('', '_blank');
+      reportWindow.document.write(reportHtml);
+      reportWindow.document.close();
     });
     // Методология (модальное окно)
     const methodologyFullText = `
