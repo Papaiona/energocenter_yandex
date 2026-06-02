@@ -157,8 +157,84 @@ function buildProjectModel(params) {
         const nominalHours = params.operatingHours;
         let effectiveHours = nominalHours;
         if (params.availability.active) effectiveHours *= (params.availability.rate / 100);
+
         let grossKWh = 0, ownUseKWh = 0;
-        if (params.multimode.active) {
+        let avgLoadForCorrection = null; // будет заполнено только для multimode_v2
+
+        // ----- НОВЫЙ МУЛЬТИРЕЖИМ (сезоны / день-ночь / типы дней) -----
+        if (params.multimode_v2?.active && params.multimode_v2.seasons?.length) {
+            const ownNeedsPct = params.ownNeeds.percent / 100;
+            let totalRevenue = 0;
+            let totalGross = 0;
+            let totalNet = 0;
+            let totalHours = 0;
+            let sumLoadWeighted = 0;
+
+            for (const season of params.multimode_v2.seasons) {
+                const days = season.days || 0;
+                const dayHoursPerDay = season.dayHours || 0;
+                const nightHoursPerDay = season.nightHours || 0;
+
+                // нормализуем доли дней
+                const wdPct = (season.weekdayPct || 0) / 100;
+                const wePct = (season.weekendPct || 0) / 100;
+                const holPct = (season.holidayPct || 0) / 100;
+                const totalPct = wdPct + wePct + holPct;
+                const wdDays = totalPct > 0 ? days * wdPct / totalPct : days / 3;
+                const weDays = totalPct > 0 ? days * wePct / totalPct : days / 3;
+                const holDays = totalPct > 0 ? days * holPct / totalPct : days / 3;
+
+                const dayTypes = [
+                    { name: 'weekday', count: wdDays },
+                    { name: 'weekend', count: weDays },
+                    { name: 'holiday', count: holDays }
+                ];
+
+                for (const dt of dayTypes) {
+                    const dayCount = dt.count;
+                    // Дневной интервал
+                    const hoursDay = dayCount * dayHoursPerDay;
+                    const loadDay = season.loadFactors?.[dt.name]?.day || 0;
+                    const tariffDay = season.tariffs?.[dt.name]?.day || 0;
+
+                    const grossDay = P_inst * 1000 * hoursDay * loadDay;
+                    const ownDay = grossDay * ownNeedsPct;
+                    const netDay = grossDay - ownDay;
+
+                    totalHours += hoursDay;
+                    totalGross += grossDay;
+                    totalNet += netDay;
+                    sumLoadWeighted += hoursDay * loadDay;
+                    totalRevenue += netDay * (tariffDay + transferTariff) * getInfl(infl.grid, t);
+
+                    // Ночной интервал
+                    const hoursNight = dayCount * nightHoursPerDay;
+                    const loadNight = season.loadFactors?.[dt.name]?.night || 0;
+                    const tariffNight = season.tariffs?.[dt.name]?.night || 0;
+
+                    const grossNight = P_inst * 1000 * hoursNight * loadNight;
+                    const ownNight = grossNight * ownNeedsPct;
+                    const netNight = grossNight - ownNight;
+
+                    totalHours += hoursNight;
+                    totalGross += grossNight;
+                    totalNet += netNight;
+                    sumLoadWeighted += hoursNight * loadNight;
+                    totalRevenue += netNight * (tariffNight + transferTariff) * getInfl(infl.grid, t);
+                }
+            }
+
+            grossKWh = totalGross;
+            ownUseKWh = totalGross - totalNet;
+            effectiveHours = totalHours;          // переопределяем для расчёта ТО, масла и пр.
+            revenueGrid_excl_vat = totalRevenue;  // выручка для этого года уже посчитана
+            if (totalHours > 0) {
+                avgLoadForCorrection = sumLoadWeighted / totalHours;
+            }
+        }
+
+        // ----- СТАРЫЙ ТРЁХЗОННЫЙ МУЛЬТИРЕЖИМ (пик/полупик/ночь) -----
+        else if (params.multimode.active) {
             let shares = [...params.multimode.timeShares];
             const sum = shares.reduce((a, b) => a + b, 0);
             if (sum > 0) shares = shares.map(s => s / sum); else shares = [0.33, 0.33, 0.34];
@@ -169,15 +245,24 @@ function buildProjectModel(params) {
                 grossKWh += g;
                 ownUseKWh += g * (params.ownNeeds.percent / 100);
             }
-        } else {
+        }
+
+        // ----- ОДНОЗОННЫЙ РЕЖИМ -----
+        else {
             grossKWh = P_inst * 1000 * effectiveHours * params.loadFactor;
             ownUseKWh = grossKWh * (params.ownNeeds.percent / 100);
         }
+
         const netKWh = grossKWh - ownUseKWh;
         let baseCons = params.gasConsumption;
         if (params.efficiencyCorrection.active) {
             let avgLoad;
-            if (params.multimode.active) {
+            // Для нового мультирежима средняя загрузка уже вычислена
+            if (params.multimode_v2?.active && avgLoadForCorrection !== null) {
+                avgLoad = avgLoadForCorrection;
+            }
+            // Старый мультирежим
+            else if (params.multimode.active) {
                 let shares = [...params.multimode.timeShares];
                 const sum = shares.reduce((a, b) => a + b, 0);
                 if (sum > 0) shares = shares.map(s => s / sum); else shares = [0.33, 0.33, 0.34];
@@ -186,9 +271,12 @@ function buildProjectModel(params) {
                 for (let i = 0; i < 3; i++) {
                     avgLoad += shares[i] * loads[i];
                 }
-            } else {
+            }
+            // Однозонный
+            else {
                 avgLoad = params.loadFactor;
             }
+
             const corr = params.efficiencyCorrection.percent / 100;
             let add = avgLoad < 0.5 ? corr : (avgLoad < 1 ? corr * (1 - avgLoad) / 0.5 : 0);
             baseCons *= (1 + add);
