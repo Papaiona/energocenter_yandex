@@ -570,13 +570,7 @@
         startupGas: { active: chk('startupCheck'), startupsPerUnit: num('startupsNum', 10), gasPerStartup: num('startupGasVol', 100) },
         otherOpex: { active: chk('otherOpexCheck'), totalAnnual: num('otherOpexAmount', 500000), inflationType: document.getElementById('otherOpexInfl')?.value || 'none', includeCapacityPayment: chk('capacityPaymentCheck'), capacityPaymentRate: num('capacityPaymentRate', 200) },
         cogeneration: { active: chk('cogenCheck'), heatTariffRubGcal: num('heatTariff', 3000) },
-        multimode: {
-          active: chk('multimodeCheck') && !chk('multimodeV2Check'),  // отключаем старый, если включён V2
-          timeShares: [num('peakTimeShare', 0.3), num('midTimeShare', 0.3), num('nightTimeShare', 0.4)],
-          loadFactors: [num('peakLoadFactor', 1), num('midLoadFactor', 0.9), num('nightLoadFactor', 0.7)],
-          tariffs: [num('peakTariff', 9), num('midTariff', 7.5), num('nightTariff', 5.5)]
-        },
-        multimode_v2: chk('multimodeCheck') && chk('multimodeV2Check') ? {
+        multimode_v2: chk('multimodeV2Check') ? {
           active: true, seasons: (() => {
             const seasons = ['winter', 'spring', 'summer', 'autumn'];
             const num = (id, def = 0) => { const el = document.getElementById(id); return el ? parseFloat(el.value) || def : def; };
@@ -733,18 +727,12 @@
       </div></div>
 
       <div class="panel-section collapsible"><div class="section-title">Когенерация</div><div class="section-content"><div class="form-row"><label><input type="checkbox" id="cogenCheck"> Тепло</label><input type="number" id="heatTariff" value="3000" disabled> ₽/Гкал</div></div></div>
-      <div class="panel-section collapsible"><div class="section-title">Мультирежим</div><div class="section-content">
-        <div class="form-row"><label><input type="checkbox" id="multimodeCheck"> Мультирежим</label></div>
-        <div class="form-row"><label><input type="checkbox" id="multimodeV2Check"> Расширенный мультирежим (сезоны)</label></div>
-        <div id="oldMultimodeTable">
-        <table style="width:100%; font-size:0.8rem;"><tr><th></th><th>Пик</th><th>Полупик</th><th>Ночь</th></tr>
-        <tr><td>Доля</td><td><input type="number" id="peakTimeShare" value="0.3" step="0.01"></td><td><input type="number" id="midTimeShare" value="0.3" step="0.01"></td><td><input type="number" id="nightTimeShare" value="0.4" step="0.01"></td></tr>
-        <tr><td>Загрузка</td><td><input type="number" id="peakLoadFactor" value="1.0" step="0.01"></td><td><input type="number" id="midLoadFactor" value="0.9" step="0.01"></td><td><input type="number" id="nightLoadFactor" value="0.7" step="0.01"></td></tr>
-        <tr><td>Тариф</td><td><input type="number" id="peakTariff" value="9.0" step="0.1"></td><td><input type="number" id="midTariff" value="7.5" step="0.1"></td><td><input type="number" id="nightTariff" value="5.5" step="0.1"></td></tr>
-        </table>
-      </div><div id="seasonalMultimode" style="display:none;">
+            <div class="panel-section collapsible"><div class="section-title">Мультирежим</div><div class="section-content">
+        <div class="form-row"><label><input type="checkbox" id="multimodeV2Check"> Мультирежим (сезоны)</label></div>
+        <div id="seasonalMultimode" style="display:none;">
           <div class="panel-section"><div class="section-title">Сезонные параметры</div><div class="section-content" id="seasonalContainer"></div></div>
-        </div></div>
+        </div>
+      </div></div>
 
       <div class="panel-section tax-section collapsible"><div class="section-title">Налоги</div><div class="section-content">
         <div class="form-row"><label><input type="checkbox" id="useTaxCheckbox" checked> Налог на прибыль</label><input type="number" id="profitTaxRate" value="25"> %</div>
@@ -803,19 +791,14 @@
       bind('consumablesCheck', 'consumablesAnnual');
       buildSeasonalUI();
 
-      const multimodeCheck = document.getElementById('multimodeCheck');
       const multimodeV2Check = document.getElementById('multimodeV2Check');
-      const oldTable = document.getElementById('oldMultimodeTable');
       const seasonalDiv = document.getElementById('seasonalMultimode');
 
       function updateMultimodeVisibility() {
-        const isV2 = multimodeV2Check.checked && multimodeCheck.checked;
-        oldTable.style.display = isV2 ? 'none' : '';
-        seasonalDiv.style.display = isV2 ? 'block' : 'none';
+        seasonalDiv.style.display = multimodeV2Check.checked ? 'block' : 'none';
         refresh();
       }
 
-      multimodeCheck.addEventListener('change', updateMultimodeVisibility);
       multimodeV2Check.addEventListener('change', updateMultimodeVisibility);
       const stagedCheck = document.getElementById('stagedCheck');
       const traditionalSection = document.getElementById('traditionalCapexSection');
@@ -912,8 +895,6 @@
       if (document.getElementById('otherOpexInfl')) document.getElementById('otherOpexInfl').value = p.otherOpex.inflationType;
       setChk('capacityPaymentCheck', p.otherOpex.includeCapacityPayment); setVal('capacityPaymentRate', p.otherOpex.capacityPaymentRate);
       setChk('cogenCheck', p.cogeneration.active); setVal('heatTariff', p.cogeneration.heatTariffRubGcal);
-      setChk('multimodeCheck', p.multimode.active);
-      ['peak', 'mid', 'night'].forEach((z, i) => { setVal(z + 'TimeShare', p.multimode.timeShares[i]); setVal(z + 'LoadFactor', p.multimode.loadFactors[i]); setVal(z + 'Tariff', p.multimode.tariffs[i]); });
       if (p.multimode_v2?.active) {
         setChk('multimodeV2Check', true);
         for (const s of p.multimode_v2.seasons) {
@@ -936,70 +917,64 @@
           setVal(`${s.name}_holLoadDay`, s.loadFactors.holiday.day);
           setVal(`${s.name}_holLoadNight`, s.loadFactors.holiday.night);
         }
-        // Принудительно включаем мультирежим, если V2 активен
-        setChk('multimodeCheck', true);
-        // Переключаем видимость таблиц
-        const oldTable = document.getElementById('oldMultimodeTable');
+        // Управляем видимостью сезонного блока
         const seasonalDiv = document.getElementById('seasonalMultimode');
-        if (oldTable && seasonalDiv) {
-          oldTable.style.display = 'none';
+        if (seasonalDiv) {
           seasonalDiv.style.display = 'block';
         }
       } else {
-        // Если V2 не активен, возвращаем стандартную видимость
-        const oldTable = document.getElementById('oldMultimodeTable');
         const seasonalDiv = document.getElementById('seasonalMultimode');
-        if (oldTable && seasonalDiv) {
-          oldTable.style.display = '';
+        if (seasonalDiv) {
           seasonalDiv.style.display = 'none';
         }
       }
-      setChk('useTaxCheckbox', p.taxes.useProfitTax); setVal('profitTaxRate', p.taxes.profitTaxRate);
-      setChk('usePropertyTax', p.taxes.usePropertyTax); setVal('propertyTaxRate', p.taxes.propertyTaxRate);
-      setChk('cadastralCheck', p.taxes.useCadastral); setVal('cadastralVal', p.taxes.cadastralBuildingsValue); setVal('cadastralRate', p.taxes.cadastralRate);
-      setChk('useVAT', p.taxes.useVAT); setVal('vatRate', p.taxes.vatRate); setChk('vatOnCapexCheck', p.taxes.vatOnCapex);
-      setVal('depreciationYears', p.taxes.depreciationYears);
-      setChk('useTaxHolidays', p.taxes.taxHoliday); setVal('taxHolidayYears', p.taxes.taxHolidayYears);
-      setChk('useDebtCheckbox', p.debt.active); setVal('debtShare', p.debt.share); setVal('interestRate', p.debt.interestRate); setVal('loanYears', p.debt.term); setVal('graceYears', p.debt.graceYears);
-      if (document.getElementById('paymentType')) document.getElementById('paymentType').value = p.debt.paymentType;
-      setVal('llcrDiscountRate', p.debt.llcrDiscountRate);
-      setChk('lifecycleCheck', p.lifecycle?.active || false);
-      setVal('amortizableCapexPercent', p.taxes.amortizableCapexPercent);
-      setChk('oilCheck', p.oil.active); setVal('oilConsumptionRate', p.oil.consumptionRate); setVal('oilPrice', p.oil.price);
-      setVal('oilChangeInterval', p.oil.changeInterval); setVal('oilChangeCost', p.oil.changeCost); setVal('oilTopUpCost', p.oil.topUpCost);
-      setChk('wasteCheck', p.waste.active); if (document.getElementById('wasteType')) document.getElementById('wasteType').value = p.waste.type;
-      setVal('wasteFixedCost', p.waste.fixedCost); setVal('wasteRatePerHour', p.waste.ratePerHour);
-      setChk('consumablesCheck', p.consumables.active); setVal('consumablesAnnual', p.consumables.totalAnnual);
-      setChk('stagedCheck', p.stagedCommissioning?.active || false);
-      setVal('preProjectCapex', p.stagedCommissioning?.preProjectCapex || 0);
-      const stagesContainer = document.getElementById('stagesContainer');
-      if (stagesContainer) stagesContainer.innerHTML = '';
-      if (p.stagedCommissioning?.active && p.stagedCommissioning.stages) {
-        p.stagedCommissioning.stages.forEach(s => addStageRow(s.year, s.powerMW));
-      }
-      const capexContainer = document.getElementById('capexProfileContainer');
-      if (capexContainer && !p.stagedCommissioning?.active) {
-        capexContainer.innerHTML = '';
-        if (p.capexProfile && p.capexProfile.length) p.capexProfile.forEach(prof => addCapexRow(prof.yearOffset, prof.percent));
-        else addCapexRow(0, 100);
-      }
-      const lcContainer = document.getElementById('lifecycleContainer');
-      if (lcContainer && p.lifecycle?.active && p.lifecycle.events) {
-        lcContainer.innerHTML = '';
-        p.lifecycle.events.forEach(ev => addLifecycleRow(ev.year, ev.assetCapexPercent, ev.replacementCostPercent));
-      }
-      for (let k of ['gas', 'grid', 'fot', 'maint', 'heat', 'eco', 'general']) setVal('infl' + k.charAt(0).toUpperCase() + k.slice(1), p.inflation[k]);
-      setVal('ecologyBase', p.ecologyBase); setVal('ecologyFactor', p.ecologyFactor);
-      setChk('useWC', p.workingCapital.active); setVal('wcPercent', p.workingCapital.percent);
-      setVal('riskFreeRate', p.wacc.riskFree); setVal('beta', p.wacc.beta); setVal('equityRiskPremium', p.wacc.equityRisk);
-      setChk('availCheck', p.availability.active); setVal('availRate', p.availability.rate);
-      setChk('efficiencyCorrectionCheck', p.efficiencyCorrection.active); setVal('efficiencyCorrectionPercent', p.efficiencyCorrection.percent);
-      const stagedCheck = document.getElementById('stagedCheck');
-      const traditionalSection = document.getElementById('traditionalCapexSection');
-      if (stagedCheck && traditionalSection) {
-        if (stagedCheck.checked) traditionalSection.style.display = 'none'; else traditionalSection.style.display = 'block';
-      }
-      refresh();
+    }
+    setChk('useTaxCheckbox', p.taxes.useProfitTax); setVal('profitTaxRate', p.taxes.profitTaxRate);
+    setChk('usePropertyTax', p.taxes.usePropertyTax); setVal('propertyTaxRate', p.taxes.propertyTaxRate);
+    setChk('cadastralCheck', p.taxes.useCadastral); setVal('cadastralVal', p.taxes.cadastralBuildingsValue); setVal('cadastralRate', p.taxes.cadastralRate);
+    setChk('useVAT', p.taxes.useVAT); setVal('vatRate', p.taxes.vatRate); setChk('vatOnCapexCheck', p.taxes.vatOnCapex);
+    setVal('depreciationYears', p.taxes.depreciationYears);
+    setChk('useTaxHolidays', p.taxes.taxHoliday); setVal('taxHolidayYears', p.taxes.taxHolidayYears);
+    setChk('useDebtCheckbox', p.debt.active); setVal('debtShare', p.debt.share); setVal('interestRate', p.debt.interestRate); setVal('loanYears', p.debt.term); setVal('graceYears', p.debt.graceYears);
+    if (document.getElementById('paymentType')) document.getElementById('paymentType').value = p.debt.paymentType;
+    setVal('llcrDiscountRate', p.debt.llcrDiscountRate);
+    setChk('lifecycleCheck', p.lifecycle?.active || false);
+    setVal('amortizableCapexPercent', p.taxes.amortizableCapexPercent);
+    setChk('oilCheck', p.oil.active); setVal('oilConsumptionRate', p.oil.consumptionRate); setVal('oilPrice', p.oil.price);
+    setVal('oilChangeInterval', p.oil.changeInterval); setVal('oilChangeCost', p.oil.changeCost); setVal('oilTopUpCost', p.oil.topUpCost);
+    setChk('wasteCheck', p.waste.active); if (document.getElementById('wasteType')) document.getElementById('wasteType').value = p.waste.type;
+    setVal('wasteFixedCost', p.waste.fixedCost); setVal('wasteRatePerHour', p.waste.ratePerHour);
+    setChk('consumablesCheck', p.consumables.active); setVal('consumablesAnnual', p.consumables.totalAnnual);
+    setChk('stagedCheck', p.stagedCommissioning?.active || false);
+    setVal('preProjectCapex', p.stagedCommissioning?.preProjectCapex || 0);
+    const stagesContainer = document.getElementById('stagesContainer');
+    if (stagesContainer) stagesContainer.innerHTML = '';
+    if (p.stagedCommissioning?.active && p.stagedCommissioning.stages) {
+      p.stagedCommissioning.stages.forEach(s => addStageRow(s.year, s.powerMW));
+    }
+    const capexContainer = document.getElementById('capexProfileContainer');
+    if (capexContainer && !p.stagedCommissioning?.active) {
+      capexContainer.innerHTML = '';
+      if (p.capexProfile && p.capexProfile.length) p.capexProfile.forEach(prof => addCapexRow(prof.yearOffset, prof.percent));
+      else addCapexRow(0, 100);
+    }
+    const lcContainer = document.getElementById('lifecycleContainer');
+    if (lcContainer && p.lifecycle?.active && p.lifecycle.events) {
+      lcContainer.innerHTML = '';
+      p.lifecycle.events.forEach(ev => addLifecycleRow(ev.year, ev.assetCapexPercent, ev.replacementCostPercent));
+    }
+    for (let k of ['gas', 'grid', 'fot', 'maint', 'heat', 'eco', 'general']) setVal('infl' + k.charAt(0).toUpperCase() + k.slice(1), p.inflation[k]);
+    setVal('ecologyBase', p.ecologyBase); setVal('ecologyFactor', p.ecologyFactor);
+    setChk('useWC', p.workingCapital.active); setVal('wcPercent', p.workingCapital.percent);
+    setVal('riskFreeRate', p.wacc.riskFree); setVal('beta', p.wacc.beta); setVal('equityRiskPremium', p.wacc.equityRisk);
+    setChk('availCheck', p.availability.active); setVal('availRate', p.availability.rate);
+    setChk('efficiencyCorrectionCheck', p.efficiencyCorrection.active); setVal('efficiencyCorrectionPercent', p.efficiencyCorrection.percent);
+    const stagedCheck = document.getElementById('stagedCheck');
+    const traditionalSection = document.getElementById('traditionalCapexSection');
+    if (stagedCheck && traditionalSection) {
+      if (stagedCheck.checked) traditionalSection.style.display = 'none'; else traditionalSection.style.display = 'block';
+    }
+    refresh();
     }
 
     // Анализ чувствительности (локальный, так как он многократно вызывает модель)
