@@ -570,7 +570,37 @@
         startupGas: { active: chk('startupCheck'), startupsPerUnit: num('startupsNum', 10), gasPerStartup: num('startupGasVol', 100) },
         otherOpex: { active: chk('otherOpexCheck'), totalAnnual: num('otherOpexAmount', 500000), inflationType: document.getElementById('otherOpexInfl')?.value || 'none', includeCapacityPayment: chk('capacityPaymentCheck'), capacityPaymentRate: num('capacityPaymentRate', 200) },
         cogeneration: { active: chk('cogenCheck'), heatTariffRubGcal: num('heatTariff', 3000) },
-        multimode: { active: chk('multimodeCheck'), timeShares: [num('peakTimeShare', 0.3), num('midTimeShare', 0.3), num('nightTimeShare', 0.4)], loadFactors: [num('peakLoadFactor', 1), num('midLoadFactor', 0.9), num('nightLoadFactor', 0.7)], tariffs: [num('peakTariff', 9), num('midTariff', 7.5), num('nightTariff', 5.5)] },
+        multimode: {
+          active: chk('multimodeCheck') && !chk('multimodeV2Check'),  // отключаем старый, если включён V2
+          timeShares: [num('peakTimeShare', 0.3), num('midTimeShare', 0.3), num('nightTimeShare', 0.4)],
+          loadFactors: [num('peakLoadFactor', 1), num('midLoadFactor', 0.9), num('nightLoadFactor', 0.7)],
+          tariffs: [num('peakTariff', 9), num('midTariff', 7.5), num('nightTariff', 5.5)]
+        },
+        multimode_v2: chk('multimodeCheck') && chk('multimodeV2Check') ? {
+          active: true, seasons: (() => {
+            const seasons = ['winter', 'spring', 'summer', 'autumn'];
+            const num = (id, def = 0) => { const el = document.getElementById(id); return el ? parseFloat(el.value) || def : def; };
+            return seasons.map(s => ({
+              name: s,
+              days: num(`${s}_days`, 90),
+              dayHours: num(`${s}_dayHours`, 16),
+              nightHours: num(`${s}_nightHours`, 8),
+              weekdayPct: num(`${s}_weekdayPct`, 67),
+              weekendPct: num(`${s}_weekendPct`, 24),
+              holidayPct: num(`${s}_holidayPct`, 9),
+              tariffs: {
+                weekday: { day: num(`${s}_wdTariffDay`, 9), night: num(`${s}_wdTariffNight`, 5.5) },
+                weekend: { day: num(`${s}_weTariffDay`, 8), night: num(`${s}_weTariffNight`, 4.5) },
+                holiday: { day: num(`${s}_holTariffDay`, 7), night: num(`${s}_holTariffNight`, 3.5) }
+              },
+              loadFactors: {
+                weekday: { day: num(`${s}_wdLoadDay`, 1), night: num(`${s}_wdLoadNight`, 0.8) },
+                weekend: { day: num(`${s}_weLoadDay`, 0.9), night: num(`${s}_weLoadNight`, 0.7) },
+                holiday: { day: num(`${s}_holLoadDay`, 0.8), night: num(`${s}_holLoadNight`, 0.6) }
+              }
+            }));
+          })()
+        } : { active: false, seasons: [] },
         taxes: { useProfitTax: chk('useTaxCheckbox'), profitTaxRate: num('profitTaxRate', 25), usePropertyTax: chk('usePropertyTax'), propertyTaxRate: num('propertyTaxRate', 2.2), useCadastral: chk('cadastralCheck'), cadastralBuildingsValue: num('cadastralVal', 5e7), cadastralRate: num('cadastralRate', 1.5), useVAT: chk('useVAT'), vatRate: num('vatRate', 20), vatOnCapex: chk('vatOnCapexCheck'), depreciationYears: Math.max(1, num('depreciationYears', 15)), taxHoliday: chk('useTaxHolidays'), taxHolidayYears: num('taxHolidayYears', 2), amortizableCapexPercent: num('amortizableCapexPercent', 85) },
         debt: { active: chk('useDebtCheckbox'), share: num('debtShare', 70), interestRate: num('interestRate', 14), term: int('loanYears', 8), graceYears: int('graceYears', 2), paymentType: document.getElementById('paymentType')?.value || 'annuity', llcrDiscountRate: num('llcrDiscountRate', 14) },
         capexEquipment: num('capexEquipment', 80), capexDesign: num('capexDesign', 10), capexNetwork: num('capexNetwork', 10), capexCommissioning: num('capexCommissioning', 10), capexInfrastructure: num('capexInfrastructure', 5.5),
@@ -705,12 +735,16 @@
       <div class="panel-section collapsible"><div class="section-title">Когенерация</div><div class="section-content"><div class="form-row"><label><input type="checkbox" id="cogenCheck"> Тепло</label><input type="number" id="heatTariff" value="3000" disabled> ₽/Гкал</div></div></div>
       <div class="panel-section collapsible"><div class="section-title">Мультирежим</div><div class="section-content">
         <div class="form-row"><label><input type="checkbox" id="multimodeCheck"> Мультирежим</label></div>
+        <div class="form-row"><label><input type="checkbox" id="multimodeV2Check"> Расширенный мультирежим (сезоны)</label></div>
+        <div id="oldMultimodeTable">
         <table style="width:100%; font-size:0.8rem;"><tr><th></th><th>Пик</th><th>Полупик</th><th>Ночь</th></tr>
         <tr><td>Доля</td><td><input type="number" id="peakTimeShare" value="0.3" step="0.01"></td><td><input type="number" id="midTimeShare" value="0.3" step="0.01"></td><td><input type="number" id="nightTimeShare" value="0.4" step="0.01"></td></tr>
         <tr><td>Загрузка</td><td><input type="number" id="peakLoadFactor" value="1.0" step="0.01"></td><td><input type="number" id="midLoadFactor" value="0.9" step="0.01"></td><td><input type="number" id="nightLoadFactor" value="0.7" step="0.01"></td></tr>
         <tr><td>Тариф</td><td><input type="number" id="peakTariff" value="9.0" step="0.1"></td><td><input type="number" id="midTariff" value="7.5" step="0.1"></td><td><input type="number" id="nightTariff" value="5.5" step="0.1"></td></tr>
         </table>
-      </div></div>
+      </div><div id="seasonalMultimode" style="display:none;">
+          <div class="panel-section"><div class="section-title">Сезонные параметры</div><div class="section-content" id="seasonalContainer"></div></div>
+        </div></div>
 
       <div class="panel-section tax-section collapsible"><div class="section-title">Налоги</div><div class="section-content">
         <div class="form-row"><label><input type="checkbox" id="useTaxCheckbox" checked> Налог на прибыль</label><input type="number" id="profitTaxRate" value="25"> %</div>
@@ -767,7 +801,22 @@
       bind('oilCheck', 'oilConsumptionRate', 'oilPrice', 'oilChangeInterval', 'oilChangeCost', 'oilTopUpCost');
       bind('wasteCheck', 'wasteType', 'wasteFixedCost', 'wasteRatePerHour');
       bind('consumablesCheck', 'consumablesAnnual');
+      buildSeasonalUI();
 
+      const multimodeCheck = document.getElementById('multimodeCheck');
+      const multimodeV2Check = document.getElementById('multimodeV2Check');
+      const oldTable = document.getElementById('oldMultimodeTable');
+      const seasonalDiv = document.getElementById('seasonalMultimode');
+
+      function updateMultimodeVisibility() {
+        const isV2 = multimodeV2Check.checked && multimodeCheck.checked;
+        oldTable.style.display = isV2 ? 'none' : '';
+        seasonalDiv.style.display = isV2 ? 'block' : 'none';
+        refresh();
+      }
+
+      multimodeCheck.addEventListener('change', updateMultimodeVisibility);
+      multimodeV2Check.addEventListener('change', updateMultimodeVisibility);
       const stagedCheck = document.getElementById('stagedCheck');
       const traditionalSection = document.getElementById('traditionalCapexSection');
       const updateTraditionalVisible = () => { if (stagedCheck.checked) traditionalSection.style.display = 'none'; else traditionalSection.style.display = 'block'; };
@@ -777,7 +826,43 @@
       addCapexRow(0, 100);
       refresh();
     }
-
+    function buildSeasonalUI() {
+      const container = document.getElementById('seasonalContainer');
+      if (!container) return;
+      const seasons = [
+        { name: 'winter', label: 'Зима' },
+        { name: 'spring', label: 'Весна' },
+        { name: 'summer', label: 'Лето' },
+        { name: 'autumn', label: 'Осень' }
+      ];
+      let html = '';
+      for (const s of seasons) {
+        html += `
+        <div class="panel-section"><div class="section-title">${s.label}</div><div class="section-content">
+          <div class="form-row"><label class="param-label">Дней в сезоне</label><input type="number" id="${s.name}_days" value="90" min="0" max="366"></div>
+          <div class="form-row"><label class="param-label">Часов в дне</label><input type="number" id="${s.name}_dayHours" value="16" min="0" max="24"> 
+          <label class="param-label">Часов в ночи</label><input type="number" id="${s.name}_nightHours" value="8" min="0" max="24"></div>
+          <div class="form-row"><label class="param-label">Рабочие дни (%)</label><input type="number" id="${s.name}_weekdayPct" value="67" min="0" max="100">
+          <label class="param-label">Выходные (%)</label><input type="number" id="${s.name}_weekendPct" value="24" min="0" max="100">
+          <label class="param-label">Праздничные (%)</label><input type="number" id="${s.name}_holidayPct" value="9" min="0" max="100"></div>
+          <div class="form-row"><strong>Тарифы (руб/кВт·ч):</strong></div>
+          <div class="form-row"><label class="param-label">Рабочий день</label><input type="number" id="${s.name}_wdTariffDay" value="9.0" step="0.1">
+          <label class="param-label">Ночь</label><input type="number" id="${s.name}_wdTariffNight" value="5.5" step="0.1"></div>
+          <div class="form-row"><label class="param-label">Выходной день</label><input type="number" id="${s.name}_weTariffDay" value="8.0" step="0.1">
+          <label class="param-label">Ночь</label><input type="number" id="${s.name}_weTariffNight" value="4.5" step="0.1"></div>
+          <div class="form-row"><label class="param-label">Праздничный день</label><input type="number" id="${s.name}_holTariffDay" value="7.0" step="0.1">
+          <label class="param-label">Ночь</label><input type="number" id="${s.name}_holTariffNight" value="3.5" step="0.1"></div>
+          <div class="form-row"><strong>Коэффициенты загрузки:</strong></div>
+          <div class="form-row"><label class="param-label">Рабочий день</label><input type="number" id="${s.name}_wdLoadDay" value="1.0" step="0.1">
+          <label class="param-label">Ночь</label><input type="number" id="${s.name}_wdLoadNight" value="0.8" step="0.1"></div>
+          <div class="form-row"><label class="param-label">Выходной день</label><input type="number" id="${s.name}_weLoadDay" value="0.9" step="0.1">
+          <label class="param-label">Ночь</label><input type="number" id="${s.name}_weLoadNight" value="0.7" step="0.1"></div>
+          <div class="form-row"><label class="param-label">Праздничный день</label><input type="number" id="${s.name}_holLoadDay" value="0.8" step="0.1">
+          <label class="param-label">Ночь</label><input type="number" id="${s.name}_holLoadNight" value="0.6" step="0.1"></div>
+        </div></div>`;
+      }
+      container.innerHTML = html;
+    }
     function addStageRow(year = 1, power = 1.0) {
       const div = document.createElement('div'); div.className = 'stage-row';
       div.innerHTML = `<input class="stage-year" value="${year}" min="1" max="20" style="width:70px"> <input class="stage-power" value="${power}" step="0.5" style="width:80px"> МВт <button class="btn btn-secondary remove-stage-row" type="button">✕</button>`;
@@ -829,6 +914,46 @@
       setChk('cogenCheck', p.cogeneration.active); setVal('heatTariff', p.cogeneration.heatTariffRubGcal);
       setChk('multimodeCheck', p.multimode.active);
       ['peak', 'mid', 'night'].forEach((z, i) => { setVal(z + 'TimeShare', p.multimode.timeShares[i]); setVal(z + 'LoadFactor', p.multimode.loadFactors[i]); setVal(z + 'Tariff', p.multimode.tariffs[i]); });
+      if (p.multimode_v2?.active) {
+        setChk('multimodeV2Check', true);
+        for (const s of p.multimode_v2.seasons) {
+          setVal(`${s.name}_days`, s.days);
+          setVal(`${s.name}_dayHours`, s.dayHours);
+          setVal(`${s.name}_nightHours`, s.nightHours);
+          setVal(`${s.name}_weekdayPct`, s.weekdayPct);
+          setVal(`${s.name}_weekendPct`, s.weekendPct);
+          setVal(`${s.name}_holidayPct`, s.holidayPct);
+          setVal(`${s.name}_wdTariffDay`, s.tariffs.weekday.day);
+          setVal(`${s.name}_wdTariffNight`, s.tariffs.weekday.night);
+          setVal(`${s.name}_weTariffDay`, s.tariffs.weekend.day);
+          setVal(`${s.name}_weTariffNight`, s.tariffs.weekend.night);
+          setVal(`${s.name}_holTariffDay`, s.tariffs.holiday.day);
+          setVal(`${s.name}_holTariffNight`, s.tariffs.holiday.night);
+          setVal(`${s.name}_wdLoadDay`, s.loadFactors.weekday.day);
+          setVal(`${s.name}_wdLoadNight`, s.loadFactors.weekday.night);
+          setVal(`${s.name}_weLoadDay`, s.loadFactors.weekend.day);
+          setVal(`${s.name}_weLoadNight`, s.loadFactors.weekend.night);
+          setVal(`${s.name}_holLoadDay`, s.loadFactors.holiday.day);
+          setVal(`${s.name}_holLoadNight`, s.loadFactors.holiday.night);
+        }
+        // Принудительно включаем мультирежим, если V2 активен
+        setChk('multimodeCheck', true);
+        // Переключаем видимость таблиц
+        const oldTable = document.getElementById('oldMultimodeTable');
+        const seasonalDiv = document.getElementById('seasonalMultimode');
+        if (oldTable && seasonalDiv) {
+          oldTable.style.display = 'none';
+          seasonalDiv.style.display = 'block';
+        }
+      } else {
+        // Если V2 не активен, возвращаем стандартную видимость
+        const oldTable = document.getElementById('oldMultimodeTable');
+        const seasonalDiv = document.getElementById('seasonalMultimode');
+        if (oldTable && seasonalDiv) {
+          oldTable.style.display = '';
+          seasonalDiv.style.display = 'none';
+        }
+      }
       setChk('useTaxCheckbox', p.taxes.useProfitTax); setVal('profitTaxRate', p.taxes.profitTaxRate);
       setChk('usePropertyTax', p.taxes.usePropertyTax); setVal('propertyTaxRate', p.taxes.propertyTaxRate);
       setChk('cadastralCheck', p.taxes.useCadastral); setVal('cadastralVal', p.taxes.cadastralBuildingsValue); setVal('cadastralRate', p.taxes.cadastralRate);
