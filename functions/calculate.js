@@ -159,9 +159,9 @@ function buildProjectModel(params) {
         if (params.availability.active) effectiveHours *= (params.availability.rate / 100);
 
         let grossKWh = 0, ownUseKWh = 0;
-        let avgLoadForCorrection = null; // будет заполнено только для multimode_v2
+        let avgLoadForCorrection = null;
 
-        // ----- НОВЫЙ МУЛЬТИРЕЖИМ (сезоны / день-ночь / типы дней) -----
+        // ----- СЕЗОННЫЙ МУЛЬТИРЕЖИМ -----
         if (params.multimode_v2?.active && params.multimode_v2.seasons?.length) {
             const ownNeedsPct = params.ownNeeds.percent / 100;
             let totalRevenue = 0;
@@ -175,7 +175,6 @@ function buildProjectModel(params) {
                 const dayHoursPerDay = season.dayHours || 0;
                 const nightHoursPerDay = season.nightHours || 0;
 
-                // нормализуем доли дней
                 const wdPct = (season.weekdayPct || 0) / 100;
                 const wePct = (season.weekendPct || 0) / 100;
                 const holPct = (season.holidayPct || 0) / 100;
@@ -192,7 +191,6 @@ function buildProjectModel(params) {
 
                 for (const dt of dayTypes) {
                     const dayCount = dt.count;
-                    // Дневной интервал
                     const hoursDay = dayCount * dayHoursPerDay;
                     const loadDay = season.loadFactors?.[dt.name]?.day || 0;
                     const tariffDay = season.tariffs?.[dt.name]?.day || 0;
@@ -207,7 +205,6 @@ function buildProjectModel(params) {
                     sumLoadWeighted += hoursDay * loadDay;
                     totalRevenue += netDay * (tariffDay + transferTariff) * getInfl(infl.grid, t);
 
-                    // Ночной интервал
                     const hoursNight = dayCount * nightHoursPerDay;
                     const loadNight = season.loadFactors?.[dt.name]?.night || 0;
                     const tariffNight = season.tariffs?.[dt.name]?.night || 0;
@@ -226,8 +223,8 @@ function buildProjectModel(params) {
 
             grossKWh = totalGross;
             ownUseKWh = totalGross - totalNet;
-            effectiveHours = totalHours;          // переопределяем для расчёта ТО, масла и пр.
-            revenueGrid_excl_vat = totalRevenue;  // выручка для этого года уже посчитана
+            effectiveHours = totalHours;
+            revenueGrid_excl_vat = totalRevenue;
             if (totalHours > 0) {
                 avgLoadForCorrection = sumLoadWeighted / totalHours;
             }
@@ -242,15 +239,11 @@ function buildProjectModel(params) {
         let baseCons = params.gasConsumption;
         if (params.efficiencyCorrection.active) {
             let avgLoad;
-            // Для нового мультирежима средняя загрузка уже вычислена
             if (params.multimode_v2?.active && avgLoadForCorrection !== null) {
                 avgLoad = avgLoadForCorrection;
-            }
-            // Однозонный
-            else {
+            } else {
                 avgLoad = params.loadFactor;
             }
-
             const corr = params.efficiencyCorrection.percent / 100;
             let add = avgLoad < 0.5 ? corr : (avgLoad < 1 ? corr * (1 - avgLoad) / 0.5 : 0);
             baseCons *= (1 + add);
@@ -291,14 +284,13 @@ function buildProjectModel(params) {
         }
         const consumablesCost = consumablesAnnual * getInfl(infl.general, t);
         let opex_excl_vat = fuelCost + maintCost + fotCost + ecoCost + otherOpex + totalOilCost + wasteCost + consumablesCost;
+
         let revenueGrid_excl_vat;
-        // Если сезонный мультирежим активен, выручка уже рассчитана в блоке V2
         if (!params.multimode_v2?.active) {
-            // однозонный режим
             const net = grossKWh * (1 - params.ownNeeds.percent / 100);
             revenueGrid_excl_vat = net * (params.gridPriceRubKWh + transferTariff) * getInfl(infl.grid, t);
         }
-        // иначе revenueGrid_excl_vat уже установлена в блоке V2
+
         let revenueHeat_excl_vat = 0;
         if (params.cogeneration.active) {
             const heatMWh = units * CONFIG.heatPowerPerUnit * effectiveHours * CONFIG.heatUsageFactor / 1000;
@@ -310,9 +302,7 @@ function buildProjectModel(params) {
         let vat_in_opex = opex_excl_vat * vatRate;
         let vat_in_capex = 0;
         if (includeVatInCapex) {
-            // НДС по CAPEX текущего года
             if (totalCapexByYear[t]) vat_in_capex += totalCapexByYear[t] * vatRate;
-            // НДС по предпроектным затратам (год 0) возмещается в первый год эксплуатации
             if (t === 1 && totalCapexByYear[0] > 0) {
                 vat_in_capex += totalCapexByYear[0] * vatRate;
             }
@@ -322,16 +312,13 @@ function buildProjectModel(params) {
         if (params.taxes.useCadastral) {
             propertyTax = params.taxes.cadastralBuildingsValue * (params.taxes.cadastralRate / 100);
         } else if (params.taxes.usePropertyTax) {
-            // Расчёт остаточной стоимости с учётом года ввода каждого этапа
             let residual = 0;
             const deprRate = deprAnnualRate;
-            // Год 0 (предпроектные)
             if (totalCapexByYear[0] > 0) {
                 const assetBase = totalCapexByYear[0] * (amortizablePercent / 100);
                 const accumulatedDepr = assetBase * deprRate * t;
                 residual += Math.max(0, assetBase - accumulatedDepr);
             }
-            // Этапы в годы 1..t
             for (let stageYear = 1; stageYear <= t; stageYear++) {
                 if (totalCapexByYear[stageYear] > 0) {
                     const assetBase = totalCapexByYear[stageYear] * (amortizablePercent / 100);
@@ -377,7 +364,6 @@ function buildProjectModel(params) {
             if (i === 0) cf -= yearlyOp[i].totalRevenue_excl_vat * (params.workingCapital.percent / 100);
             if (i + 1 === years) cf += yearlyOp[i].totalRevenue_excl_vat * (params.workingCapital.percent / 100);
         }
-        // Ликвидационная стоимость с налогом на прибыль
         if (i + 1 === years) {
             const salvageBeforeTax = totalCapexSum * (params.salvagePercent / 100);
             const salvageTax = salvageBeforeTax * taxRateProfit;
@@ -401,7 +387,6 @@ function buildProjectModel(params) {
             const salvageTax = salvageBeforeTax * taxRateProfit;
             salvageAfterTax = salvageBeforeTax - salvageTax;
         }
-        // Убрана амортизация (не должно быть + yearlyOp[i].depr)
         fcff[i] = yearlyOp[i].ebitda - unleveredProfitTax[i] - yearlyOp[i].propertyTax - maintCapexAnnual - growthCapex + wcChange + salvageAfterTax;
     }
 
@@ -457,7 +442,6 @@ function buildProjectModel(params) {
 }
 
 exports.handler = async function (event) {
-    // CORS-предзапрос
     if (event.httpMethod === 'OPTIONS') {
         return {
             statusCode: 200,
