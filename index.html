@@ -480,6 +480,7 @@
     function updateCharts(model) {
       if (!model) return;
       destroyAllCharts();
+      const m = model.metrics;
       const container = document.getElementById('chartsPanel');
       container.innerHTML = `
       <div class="chart-card"><div class="chart-title">Выручка / OPEX (1-й год, без НДС)</div><canvas id="barChart"></canvas><div class="chart-description">Сравнение выручки от продажи электроэнергии, тепла и общих операционных затрат за первый год проекта.</div></div>
@@ -516,7 +517,6 @@
       const metricsPanel = document.getElementById('metricsPanel');
       if (metricsPanel) {
         try {
-          const m = model.metrics;
           if (!m) throw new Error('metrics отсутствуют');
 
           const safeFixed = (val, digits) => (val != null && !isNaN(val)) ? val.toFixed(digits) : '—';
