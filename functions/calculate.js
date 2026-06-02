@@ -232,21 +232,6 @@ function buildProjectModel(params) {
                 avgLoadForCorrection = sumLoadWeighted / totalHours;
             }
         }
-
-        // ----- СТАРЫЙ ТРЁХЗОННЫЙ МУЛЬТИРЕЖИМ (пик/полупик/ночь) -----
-        else if (params.multimode.active) {
-            let shares = [...params.multimode.timeShares];
-            const sum = shares.reduce((a, b) => a + b, 0);
-            if (sum > 0) shares = shares.map(s => s / sum); else shares = [0.33, 0.33, 0.34];
-            const loads = params.multimode.loadFactors;
-            for (let i = 0; i < 3; i++) {
-                const h = effectiveHours * shares[i];
-                const g = P_inst * 1000 * h * loads[i];
-                grossKWh += g;
-                ownUseKWh += g * (params.ownNeeds.percent / 100);
-            }
-        }
-
         // ----- ОДНОЗОННЫЙ РЕЖИМ -----
         else {
             grossKWh = P_inst * 1000 * effectiveHours * params.loadFactor;
@@ -260,17 +245,6 @@ function buildProjectModel(params) {
             // Для нового мультирежима средняя загрузка уже вычислена
             if (params.multimode_v2?.active && avgLoadForCorrection !== null) {
                 avgLoad = avgLoadForCorrection;
-            }
-            // Старый мультирежим
-            else if (params.multimode.active) {
-                let shares = [...params.multimode.timeShares];
-                const sum = shares.reduce((a, b) => a + b, 0);
-                if (sum > 0) shares = shares.map(s => s / sum); else shares = [0.33, 0.33, 0.34];
-                const loads = params.multimode.loadFactors;
-                avgLoad = 0;
-                for (let i = 0; i < 3; i++) {
-                    avgLoad += shares[i] * loads[i];
-                }
             }
             // Однозонный
             else {
@@ -317,23 +291,14 @@ function buildProjectModel(params) {
         }
         const consumablesCost = consumablesAnnual * getInfl(infl.general, t);
         let opex_excl_vat = fuelCost + maintCost + fotCost + ecoCost + otherOpex + totalOilCost + wasteCost + consumablesCost;
-        let revenueGrid_excl_vat = 0;
-        if (params.multimode.active) {
-            let shares = [...params.multimode.timeShares];
-            const sum = shares.reduce((a, b) => a + b, 0);
-            if (sum > 0) shares = shares.map(s => s / sum);
-            const tariffs = params.multimode.tariffs;
-            const loads = params.multimode.loadFactors;
-            for (let i = 0; i < 3; i++) {
-                const h = effectiveHours * shares[i];
-                const gross = P_inst * 1000 * h * loads[i];
-                const net = gross * (1 - params.ownNeeds.percent / 100);
-                revenueGrid_excl_vat += net * (tariffs[i] + transferTariff) * getInfl(infl.grid, t);
-            }
-        } else {
+        let revenueGrid_excl_vat;
+        // Если сезонный мультирежим активен, выручка уже рассчитана в блоке V2
+        if (!params.multimode_v2?.active) {
+            // однозонный режим
             const net = grossKWh * (1 - params.ownNeeds.percent / 100);
             revenueGrid_excl_vat = net * (params.gridPriceRubKWh + transferTariff) * getInfl(infl.grid, t);
         }
+        // иначе revenueGrid_excl_vat уже установлена в блоке V2
         let revenueHeat_excl_vat = 0;
         if (params.cogeneration.active) {
             const heatMWh = units * CONFIG.heatPowerPerUnit * effectiveHours * CONFIG.heatUsageFactor / 1000;
