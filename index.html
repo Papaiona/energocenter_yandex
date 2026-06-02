@@ -1166,12 +1166,12 @@
       // Создаём временный элемент
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = reportHtml;
-      tempDiv.style.position = 'fixed';
+      // Надёжное скрытие: за пределами видимого экрана, но доступно для html2canvas
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
       tempDiv.style.top = '0';
-      tempDiv.style.left = '0';
       tempDiv.style.width = '210mm';
-      tempDiv.style.background = 'white';
-      tempDiv.style.zIndex = '-1';
+      tempDiv.style.backgroundColor = 'white';
       document.body.appendChild(tempDiv);
 
       try {
